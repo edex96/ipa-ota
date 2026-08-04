@@ -43,8 +43,14 @@ being served over HTTP, so you can't get a confusing silent failure.
   neither → App Store (won't install OTA).
 - **Warns before you waste a trip to the phone** — Simulator build, App Store signing, expired
   profile, unsigned binary, plus the trust / Developer Mode steps for the detected signing type.
+- **Un-mangles the app icon** — Xcode ships icons as Apple "iPhone-optimized" PNGs (a `CgBI`
+  chunk, raw deflate instead of zlib, BGRA channel order, premultiplied alpha) which no desktop
+  browser can decode. `lib/pngfix.js` converts them back to standard PNGs at upload time; output
+  is pixel-exact against Apple's own decoder.
 - **Generates the manifest** on the fly, so the same upload works over localhost, LAN or tunnel
   without regenerating anything.
+- **Upload UX** — the drop zone turns green with the filename once a build is picked (drag & drop
+  works too), a real progress bar tracks the transfer, and the install page has a copy-link button.
 - **Link options** — optional password, expiry in days, max install count, install counter.
 - **QR code** on the install page so you can jump from the desktop to the phone.
 
@@ -108,7 +114,7 @@ the payload itself and has no credentials to send. So:
 
 - **private** — `/` (link list), `/upload`, `/delete/:id`
 - **public** — `/i/:id` (install page), `/i/:id/manifest.plist`, `/i/:id/app.ipa`, `/i/:id/icon.png`,
-  `/style.css`
+  `/assets/*` (css + js the install page needs)
 
 An install link is therefore shareable as-is, and a per-link password is the way to lock one down.
 Change the login with:
