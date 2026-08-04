@@ -1,0 +1,21 @@
+{
+  "name": "ipa-ota",
+  "version": "1.0.0",
+  "description": "Self-hosted Diawi clone: upload an .ipa, get an OTA install link for iPhone",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000"
+  },
+  "license": "ISC",
+  "packageManager": "pnpm@10.30.1",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.2.0",
+    "qrcode": "^1.5.4",
+    "simple-plist": "^1.3.1",
+    "yauzl": "^3.4.0"
+  }
+}
