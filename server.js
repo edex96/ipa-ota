@@ -201,7 +201,9 @@ app.get('/i/:id/icon.png', async (req, res, next) => {
   }
 })
 
-app.post('/i/:id/delete', async (req, res) => {
+// Deliberately not under /i/ — that prefix is public so iOS can fetch manifests,
+// while everything else sits behind the reverse proxy's auth.
+app.post('/delete/:id', async (req, res) => {
   await removeUpload(req.params.id)
   res.redirect('/')
 })
