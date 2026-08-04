@@ -11,7 +11,8 @@ module.exports = {
       max_memory_restart: '512M',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3010, // 3000 is taken by another app on this box
+        HOST: '127.0.0.1', // nginx is the only thing that should reach it
         PUBLIC_URL: 'https://ota.example.com',
         MAX_MB: 2048,
       },

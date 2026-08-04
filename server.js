@@ -21,6 +21,8 @@ import {
 } from './lib/store.js'
 
 const PORT = Number(process.env.PORT || 3000)
+// Behind a reverse proxy, bind to loopback so the port is not reachable from outside.
+const HOST = process.env.HOST || '0.0.0.0'
 const MAX_MB = Number(process.env.MAX_MB || 1024)
 
 const app = express()
@@ -212,10 +214,13 @@ app.use((err, _req, res, _next) => {
 await fs.mkdir(UPLOAD_DIR, { recursive: true })
 await fs.mkdir(path.join(process.cwd(), 'data', 'tmp'), { recursive: true })
 
-app.listen(PORT, () => {
-  const lan = Object.values(os.networkInterfaces())
-    .flat()
-    .find((i) => i && i.family === 'IPv4' && !i.internal)?.address
+app.listen(PORT, HOST, () => {
+  const lan =
+    HOST === '0.0.0.0'
+      ? Object.values(os.networkInterfaces())
+          .flat()
+          .find((i) => i && i.family === 'IPv4' && !i.internal)?.address
+      : null
   console.log(`\n  IPA OTA server`)
   console.log(`  local   http://localhost:${PORT}`)
   if (lan) console.log(`  lan     http://${lan}:${PORT}`)
