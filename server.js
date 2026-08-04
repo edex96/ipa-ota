@@ -28,7 +28,9 @@ const MAX_MB = Number(process.env.MAX_MB || 1024)
 const app = express()
 app.set('trust proxy', true)
 app.use(express.urlencoded({ extended: false }))
-app.use(express.static(path.join(process.cwd(), 'public')))
+// Mounted under /assets so the reverse proxy can expose exactly this prefix without auth —
+// install pages are public and still need their css/js.
+app.use('/assets', express.static(path.join(process.cwd(), 'public', 'assets')))
 
 const upload = multer({
   dest: path.join(process.cwd(), 'data', 'tmp'),
@@ -107,7 +109,10 @@ app.post('/upload', (req, res) => {
       })
 
       const q = password ? `?k=${tokenFor(id, password)}` : ''
-      res.redirect(`/i/${id}${q}`)
+      const url = `/i/${id}${q}`
+      // The progress-bar upload wants a target to navigate to, not a 302 body.
+      if (req.get('X-Requested-With') === 'xhr') return res.json({ url, id })
+      res.redirect(url)
     } catch (e) {
       await removeUpload(id)
       await fs.rm(req.file.path, { force: true })
@@ -143,7 +148,8 @@ app.get('/i/:id', async (req, res, next) => {
         key,
         installUrl,
         manifestUrl,
-        qr: await QRCode.toDataURL(`${base}/i/${meta.id}${suffix}`, { margin: 1, width: 400 }),
+        // bare URL, like the copy button: a photo of the screen should not leak the token
+        qr: await QRCode.toDataURL(`${base}/i/${meta.id}`, { margin: 1, width: 400 }),
         blocked: linkBlocked(meta),
         insecure: !base.startsWith('https://'),
       }),
