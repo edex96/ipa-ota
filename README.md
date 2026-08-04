@@ -74,6 +74,52 @@ data/uploads/<id>/ app.ipa, icon.png, meta.json
 | `PUBLIC_URL` | unset   | forces the origin used in manifests; else request-derived |
 | `MAX_MB`     | `1024`  | upload size limit                                        |
 
+## Deployed instance
+
+Live at **https://ota.example.com** (AlmaLinux 10 box, `REDACTED-HOST`, code in `$OTA_DIR`).
+
+| Piece      | Where                                                                   |
+| ---------- | ----------------------------------------------------------------------- |
+| Process    | pm2 app `ipa-ota` on `127.0.0.1:3010` (3000 was taken), `ecosystem.config.cjs` |
+| Boot       | `pm2-root.service` (enabled) restores from `/root/.pm2/dump.pm2`         |
+| Proxy      | `/etc/nginx/conf.d/ota.example.com.conf` — copy of `deploy/nginx.conf`      |
+| TLS        | Let's Encrypt `ota.example.com`, certbot auto-renew, HTTP → HTTPS 301  |
+| Login      | nginx basic auth, `/etc/nginx/ipa-ota.htpasswd`, user `REDACTED-USER`         |
+| Logs       | `/var/log/ipa-ota/{out,err}.log`                                        |
+| Prune      | `/etc/cron.d/ipa-ota-prune`, nightly 04:17, drops uploads >30d          |
+
+Redeploy after a push:
+
+```bash
+ssh $OTA_SSH 'cd $OTA_DIR && git pull && pnpm install --prod && pm2 restart ipa-ota --update-env'
+```
+
+If `deploy/nginx.conf` changed, also copy it up and reload:
+
+```bash
+scp deploy/nginx.conf $OTA_SSH:/etc/nginx/conf.d/ota.example.com.conf
+ssh $OTA_SSH 'nginx -t && systemctl reload nginx'
+```
+
+### Auth boundary
+
+The upload UI is behind basic auth; the install links are not, because iOS fetches the manifest and
+the payload itself and has no credentials to send. So:
+
+- **private** — `/` (link list), `/upload`, `/delete/:id`
+- **public** — `/i/:id` (install page), `/i/:id/manifest.plist`, `/i/:id/app.ipa`, `/i/:id/icon.png`,
+  `/style.css`
+
+An install link is therefore shareable as-is, and a per-link password is the way to lock one down.
+Change the login with:
+
+```bash
+ssh $OTA_SSH "printf 'REDACTED-USER:%s\n' \"\$(openssl passwd -apr1 'NEWPASS')\" > /etc/nginx/ipa-ota.htpasswd"
+```
+
+Because `client_max_body_size` is set in the nginx server block, raising `MAX_MB` in
+`ecosystem.config.cjs` past 2048 also means raising it there.
+
 ## Scope
 
 This is a local dev-distribution tool: no auth on the upload page, no database, uploads just sit
