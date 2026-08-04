@@ -80,31 +80,39 @@ data/uploads/<id>/ app.ipa, icon.png, meta.json
 | `PUBLIC_URL` | unset   | forces the origin used in manifests; else request-derived |
 | `MAX_MB`     | `1024`  | upload size limit                                        |
 
-## Deployed instance
+## Deploying behind nginx
 
-Live at **https://ota.example.com** (AlmaLinux 10 box, `REDACTED-HOST`, code in `$OTA_DIR`).
+The repo carries no host-specific values — set them in the shell that starts pm2 (or an
+untracked `.env` you source first) and point `deploy/nginx.conf` at your own domain.
 
-| Piece      | Where                                                                   |
-| ---------- | ----------------------------------------------------------------------- |
-| Process    | pm2 app `ipa-ota` on `127.0.0.1:3010` (3000 was taken), `ecosystem.config.cjs` |
-| Boot       | `pm2-root.service` (enabled) restores from `/root/.pm2/dump.pm2`         |
-| Proxy      | `/etc/nginx/conf.d/ota.example.com.conf` — copy of `deploy/nginx.conf`      |
-| TLS        | Let's Encrypt `ota.example.com`, certbot auto-renew, HTTP → HTTPS 301  |
-| Login      | nginx basic auth, `/etc/nginx/ipa-ota.htpasswd`, user `REDACTED-USER`         |
-| Logs       | `/var/log/ipa-ota/{out,err}.log`                                        |
-| Prune      | `/etc/cron.d/ipa-ota-prune`, nightly 04:17, drops uploads >30d          |
+```bash
+export OTA_HOST=ota.example.com          # your domain
+export OTA_SSH=user@your-server          # ssh target
+export OTA_DIR=/srv/ipa-ota              # checkout on the server
+export OTA_PUBLIC_URL="https://$OTA_HOST"
+```
+
+| Piece   | Where                                                                            |
+| ------- | -------------------------------------------------------------------------------- |
+| Process | pm2 app `ipa-ota` on `127.0.0.1:$OTA_PORT` (default 3010), `ecosystem.config.cjs` |
+| Boot    | `pm2 save` + `pm2 startup` so the dump is restored on reboot                      |
+| Proxy   | `/etc/nginx/conf.d/$OTA_HOST.conf` — copy of `deploy/nginx.conf`                  |
+| TLS     | Let's Encrypt via `certbot --nginx -d $OTA_HOST`, auto-renew, HTTP → HTTPS 301    |
+| Login   | nginx basic auth, `/etc/nginx/ipa-ota.htpasswd`                                   |
+| Logs    | `$OTA_DIR/logs/{out,err}.log` (override with `OTA_LOG_DIR`)                      |
+| Prune   | `/etc/cron.d/ipa-ota-prune`, nightly, drops uploads >30d                          |
 
 Redeploy after a push:
 
 ```bash
-ssh $OTA_SSH 'cd $OTA_DIR && git pull && pnpm install --prod && pm2 restart ipa-ota --update-env'
+ssh "$OTA_SSH" "cd $OTA_DIR && git pull && pnpm install --prod && pm2 restart ipa-ota --update-env"
 ```
 
 If `deploy/nginx.conf` changed, also copy it up and reload:
 
 ```bash
-scp deploy/nginx.conf $OTA_SSH:/etc/nginx/conf.d/ota.example.com.conf
-ssh $OTA_SSH 'nginx -t && systemctl reload nginx'
+scp deploy/nginx.conf "$OTA_SSH:/etc/nginx/conf.d/$OTA_HOST.conf"
+ssh "$OTA_SSH" 'nginx -t && systemctl reload nginx'
 ```
 
 ### Auth boundary
@@ -117,10 +125,11 @@ the payload itself and has no credentials to send. So:
   `/assets/*` (css + js the install page needs)
 
 An install link is therefore shareable as-is, and a per-link password is the way to lock one down.
-Change the login with:
+Set or change the login on the server — `openssl passwd` prompts, so the password never lands in
+your shell history or in a file here:
 
 ```bash
-ssh $OTA_SSH "printf 'REDACTED-USER:%s\n' \"\$(openssl passwd -apr1 'NEWPASS')\" > /etc/nginx/ipa-ota.htpasswd"
+ssh "$OTA_SSH" 'printf "%s:%s\n" "$USER" "$(openssl passwd -apr1)" > /etc/nginx/ipa-ota.htpasswd'
 ```
 
 Because `client_max_body_size` is set in the nginx server block, raising `MAX_MB` in

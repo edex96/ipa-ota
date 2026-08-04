@@ -1,4 +1,10 @@
 node_modules/
 data/
+logs/
 *.log
 .DS_Store
+
+# host-specific deploy values (OTA_HOST, OTA_SSH, OTA_PUBLIC_URL, …)
+.env
+.env.*
+*.htpasswd
