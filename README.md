@@ -82,14 +82,25 @@ data/uploads/<id>/ app.ipa, icon.png, meta.json
 
 ## Deploying behind nginx
 
-The repo carries no host-specific values — set them in the shell that starts pm2 (or an
-untracked `.env` you source first) and point `deploy/nginx.conf` at your own domain.
+The repo carries no host-specific values. Locally, export the three the deploy commands below use:
 
 ```bash
 export OTA_HOST=ota.example.com          # your domain
 export OTA_SSH=user@your-server          # ssh target
 export OTA_DIR=/srv/ipa-ota              # checkout on the server
-export OTA_PUBLIC_URL="https://$OTA_HOST"
+```
+
+On the server, `ecosystem.config.cjs` reads its values from the environment, so keep them in an
+untracked `$OTA_DIR/.env` (`.env` is gitignored, so it survives `git pull` and never lands in git):
+
+```bash
+ssh "$OTA_SSH" "cat > $OTA_DIR/.env && chmod 600 $OTA_DIR/.env" <<EOF
+OTA_DIR=$OTA_DIR
+OTA_LOG_DIR=/var/log/ipa-ota
+OTA_PUBLIC_URL=https://$OTA_HOST
+OTA_PORT=3010
+OTA_MAX_MB=2048
+EOF
 ```
 
 | Piece   | Where                                                                            |
@@ -102,16 +113,29 @@ export OTA_PUBLIC_URL="https://$OTA_HOST"
 | Logs    | `$OTA_DIR/logs/{out,err}.log` (override with `OTA_LOG_DIR`)                      |
 | Prune   | `/etc/cron.d/ipa-ota-prune`, nightly, drops uploads >30d                          |
 
-Redeploy after a push:
+Redeploy after a push. Sourcing `.env` first is what puts `OTA_*` in scope; `pm2 start` on an
+already-running app restarts it *and* re-reads `ecosystem.config.cjs`, which `pm2 restart` does not:
 
 ```bash
-ssh "$OTA_SSH" "cd $OTA_DIR && git pull && pnpm install --prod && pm2 restart ipa-ota --update-env"
+ssh "$OTA_SSH" "cd $OTA_DIR && set -a && . ./.env && set +a \
+  && git pull \
+  && pnpm install --prod \
+  && pm2 start ecosystem.config.cjs --update-env \
+  && pm2 save"
 ```
 
-If `deploy/nginx.conf` changed, also copy it up and reload:
+`pm2 save` refreshes the dump so a reboot brings the app back with the same resolved env even
+though the `.env` is not sourced at boot.
+
+If the remote history was rewritten, `git pull` refuses (no common ancestor). Replace it with
+`git fetch origin && git reset --hard origin/main` — uploads in `data/` are ignored, so they stay.
+
+If `deploy/nginx.conf` changed, substitute your host as it goes up — the committed file is a
+template carrying `ota.example.com`, in the `server_name`s and both cert paths:
 
 ```bash
-scp deploy/nginx.conf "$OTA_SSH:/etc/nginx/conf.d/$OTA_HOST.conf"
+sed "s/ota\.example\.com/$OTA_HOST/g" deploy/nginx.conf |
+  ssh "$OTA_SSH" "cat > /etc/nginx/conf.d/$OTA_HOST.conf"
 ssh "$OTA_SSH" 'nginx -t && systemctl reload nginx'
 ```
 
